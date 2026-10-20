@@ -1,10 +1,10 @@
-"""Load TXT/PDF files or configured webpages into the existing semantic index."""
+
+"""Load configured HTML webpages into the persistent semantic index."""
 import argparse
 import json
 import os
 import hashlib
 from pathlib import Path
-from xml.parsers.expat import errors
 
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
@@ -29,36 +29,11 @@ def embedding_model():
 
 def make_embeddings():
     if not os.getenv("OPENAI_API_KEY"):
-        raise ValueError("Set OPENAI_API_KEY in .env before indexing or querying.")
+        raise ValueError(
+            "Set OPENAI_API_KEY in .env before indexing or querying."
+        )
+
     return OpenAIEmbeddings(model=embedding_model())
-
-
-
-    pages = []
-    for path in sorted(Path(folder).iterdir()):
-        if not path.is_file() or path.suffix.lower() not in {".txt", ".pdf"}:
-            continue
-        if path.suffix.lower() == ".pdf":
-            texts = [page.extract_text() or "" for page in PdfReader(path).pages]
-        else:
-            texts = [path.read_text(encoding="utf-8-sig")]
-        nonempty = 0
-        for number, text in enumerate(texts, start=1):
-            # Preserve paragraphs; remove trailing spaces and Windows line endings.
-            text = "\n".join(line.rstrip() for line in text.splitlines()).strip()
-            if not text:
-                continue
-            nonempty += 1
-            metadata = {"source": path.name}
-            if path.suffix.lower() == ".pdf":
-                metadata["page"] = number
-            pages.append(Document(page_content=text, metadata=metadata))
-        if not nonempty:
-            raise ValueError(f"No extractable text in {path.name}. Scans need OCR.")
-    if not pages:
-        raise ValueError("No readable .txt or text-based .pdf documents found.")
-    return pages
-
 
 def split_documents(pages):
     splitter = RecursiveCharacterTextSplitter(

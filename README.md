@@ -1,21 +1,23 @@
-# Enterprise Knowledge Assistant — Webpage-Only RAG
+# Enterprise Knowledge Assistant
 
-A Python command-line **Retrieval-Augmented Generation (RAG)** application that answers questions using selected **public HTML webpages** as its knowledge base. It extracts webpage content, builds a searchable vector index with OpenAI embeddings and ChromaDB, and generates evidence-grounded answers with source citations.
+A command-line RAG (retrieval-augmented generation) tool that answers questions from a handful of public webpages. It pulls the text out of the pages you choose, indexes it in a local ChromaDB store using OpenAI embeddings, and answers questions with citations pointing back to the original pages.
 
-**Scope:** Webpage ingestion only. This application does **not** ingest local PDF or TXT files, crawl an entire website, or provide a hosted web interface. The configured GitLab handbook pages are examples of public knowledge sources; this project is **not affiliated with GitLab**.
+I used a few public GitLab handbook pages as the sample knowledge base. This project isn't affiliated with GitLab.
 
-## Features
+Scope: it only handles HTML webpages you list explicitly. It doesn't ingest local PDF/TXT files, crawl whole sites, or ship with a web UI.
 
-- **URL-driven ingestion:** Reads the list of webpages from `policy_urls.json` by default; optionally accepts URLs from the command line.
-- **HTML content extraction:** Extracts readable text, headings, and sections while filtering navigation and other site clutter.
-- **Responsible fetching:** Validates URLs, checks `robots.txt`, respects crawl delays, and rejects unsupported/non-HTML responses and automatic redirects.
-- **Text chunking:** Splits webpage content into overlapping chunks (configured as 600 characters with 100-character overlap).
-- **Semantic retrieval:** Creates OpenAI embeddings and stores them in a persistent local ChromaDB collection; the default query retrieves up to three relevant chunks.
-- **Grounded answers:** Generates answers from retrieved evidence and includes citation labels linked to the original webpages.
-- **Incremental updates:** Re-indexes changed webpage content while preserving other sources where possible; explicit rebuilds replace the collection.
-- **Automated testing:** Uses mocked embedding/HTTP/LLM behavior and a temporary ChromaDB database for offline tests, plus an optional live webpage test.
+## What it does
 
-## Architecture
+- Reads URLs from `policy_urls.json` by default, or from the command line with `--urls`.
+- Extracts the readable text, headings and sections from each page and skips navigation and other clutter.
+- Fetches politely: validates URLs, checks `robots.txt`, respects crawl delays, and rejects non-HTML responses and automatic redirects.
+- Splits text into overlapping chunks (600 characters, 100 overlap).
+- Stores embeddings in a persistent local ChromaDB collection. A query retrieves the top three chunks by default.
+- Generates answers from the retrieved text only, with citation labels like `[S1]` that map back to the source URLs.
+- Re-indexes only pages whose content changed. A full rebuild replaces the whole collection.
+- Tests run offline with mocked HTTP, embeddings and LLM calls, plus a temporary ChromaDB directory. There's also an opt-in live test.
+
+## How it works
 
 ```mermaid
 flowchart TD
@@ -32,51 +34,51 @@ flowchart TD
     J --> K[Answer with webpage citations]
 ```
 
-## Technology stack
+## Tech stack
 
-- **Language:** Python 3.12
-- **RAG framework:** LangChain
-- **Embeddings and answer generation:** OpenAI API
-- **Vector database:** ChromaDB (`langchain-chroma`)
-- **Webpage requests and parsing:** `requests`, Beautiful Soup
-- **Configuration:** `python-dotenv`, JSON
-- **Testing:** Python `unittest`
+- Python 3.12
+- LangChain
+- OpenAI API (embeddings and chat)
+- ChromaDB via `langchain-chroma`
+- `requests` and Beautiful Soup for fetching and parsing
+- `python-dotenv` and JSON for configuration
+- `unittest` for tests
 
-See [`requirements.txt`](requirements.txt) for the dependency versions in your project. The webpage-only requirements should **not** include `pypdf`.
+Dependencies are listed in `requirements.txt`.
 
 ## Project structure
 
 ```text
 enterprise-knowledge-assistant/
-├── ingest.py                  # Fetch, chunk, and index webpages
-├── webpage_loader.py          # Validate URLs and extract HTML content
-├── rag.py                     # Retrieve evidence and generate cited answers
-├── live_check.py              # Optional API-backed RAG smoke checks
-├── policy_urls.json           # Configured public webpage URLs
-├── requirements.txt           # Python dependencies
-├── .env.example               # Environment-variable template (placeholders only)
-├── .gitignore                 # Ignore local secrets and generated files
+├── ingest.py                  # Fetch, chunk and index webpages
+├── webpage_loader.py          # URL validation and HTML extraction
+├── rag.py                     # Retrieval and cited answer generation
+├── live_check.py              # Optional API-backed smoke checks
+├── policy_urls.json           # Configured webpage URLs
+├── requirements.txt
+├── .env.example               # Placeholder environment variables
+├── .gitignore
 ├── README.md
 └── tests/
-    ├── test_pipeline.py      # Chunking, index persistence, retrieval, citations
-    ├── test_webpages.py      # HTML extraction, fetching, and update safeguards
-    └── test_live_webpage.py  # Opt-in live website check
+    ├── test_pipeline.py       # Chunking, persistence, retrieval, citations
+    ├── test_webpages.py       # HTML extraction, fetching, update safeguards
+    └── test_live_webpage.py   # Opt-in live website check
 ```
 
-`data/chroma/` is generated when you index content and should be excluded from Git. A local `.env` should also be excluded. **No `data/documents/` folder is required.**
+`data/chroma/` is created when you index content. It's git-ignored, along with your local `.env`.
 
 ## Setup
 
-### 1. Clone and open the project
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/KaushalChandrasekar/enterprise-knowledge-assistant.git
 cd enterprise-knowledge-assistant
 ```
 
-### 2. Create a virtual environment
+### 2. Create a virtual environment and install dependencies
 
-**Windows PowerShell:**
+Windows PowerShell:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -84,7 +86,7 @@ py -3.12 -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-**macOS / Linux:**
+macOS / Linux:
 
 ```bash
 python3.12 -m venv .venv
@@ -92,23 +94,23 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### 3. Configure environment variables
+### 3. Add your API key
 
-Create `.env` from `.env.example`:
+Copy the example env file:
 
-**Windows PowerShell:**
+Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-**macOS / Linux:**
+macOS / Linux:
 
 ```bash
 cp .env.example .env
 ```
 
-Your `.env.example` must contain **only placeholder values**, for example:
+Then open `.env` and fill in your key. The defaults look like this:
 
 ```dotenv
 OPENAI_API_KEY=your_openai_api_key_here
@@ -117,13 +119,11 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 LANGSMITH_TRACING=false
 ```
 
-Put your real key **only in your local `.env` file**. OpenAI API usage may incur charges. Webpage text is sent to the embedding model, and retrieved evidence is sent to the chat model.
+Keep your real key in `.env` only and never commit it. OpenAI usage costs money: page text is sent to the embedding model, and retrieved chunks are sent to the chat model.
 
-> **Security:** A prior project version contained a real key in `.env.example`. Revoke that key if you have not already done so, replace it locally, and remove the secret from affected Git commits before pushing. Never use GitHub's secret-scanning bypass to publish a working key.
+## Choosing webpages
 
-## Configure webpages
-
-Edit [`policy_urls.json`](policy_urls.json) to select the public HTML pages you want to index. The file must contain a nonempty JSON list of URLs:
+`policy_urls.json` holds the pages to index. It must be a non-empty JSON list of URLs, for example:
 
 ```json
 [
@@ -132,35 +132,35 @@ Edit [`policy_urls.json`](policy_urls.json) to select the public HTML pages you 
 ]
 ```
 
-These are example entries; your repository may include additional GitLab handbook pages. The application processes explicitly configured URLs only—it does **not** follow every link on a page. Websites may block requests, change layouts, or have restrictive `robots.txt` rules.
+Only the URLs you list are processed. The app never follows links on a page. Some sites block automated requests, change their layout, or have restrictive `robots.txt` rules, so not every page will work.
 
-## Run the application
+## Usage
 
-Run these commands from the repository root, with the virtual environment activated.
+Run everything from the repo root with the virtual environment active.
 
-### Preview extracted webpage content
+### Preview extracted content
 
 ```bash
 python ingest.py --preview
 ```
 
-Uses `policy_urls.json` automatically and previews extracted content/chunk metadata **without calling the embeddings API** or changing ChromaDB. Internet access is still required to fetch webpages.
+Shows the extracted text and chunk metadata for the configured URLs. It doesn't call the embeddings API or touch ChromaDB, but it does need internet access to fetch the pages.
 
-### Ingest the configured webpages
+### Index the configured pages
 
 ```bash
 python ingest.py
 ```
 
-Fetches URLs from `policy_urls.json`, generates embeddings, and updates the persistent index in `data/chroma/`.
+Fetches the URLs, creates embeddings and updates the index in `data/chroma/`.
 
-### Ingest one or more specific URLs
+### Index specific URLs
 
 ```bash
 python ingest.py --urls https://example.com/policy
 ```
 
-The `--urls` argument **overrides** `policy_urls.json` for that run. Replace the example URL with a public HTML webpage you are permitted to access.
+`--urls` replaces `policy_urls.json` for that run. Only use public pages you're allowed to access.
 
 ### Rebuild the index
 
@@ -168,56 +168,46 @@ The `--urls` argument **overrides** `policy_urls.json` for that run. Replace the
 python ingest.py --rebuild
 ```
 
-Use a rebuild when you intentionally want the collection to contain only the currently configured webpages—for example, after removing local-file ingestion support. **Rebuilding replaces the current index**; verify that your configured URLs are correct and accessible first. If loading fails, the application should cancel the rebuild rather than discard indexed content.
+This replaces the collection so it contains only the currently configured pages. Check that your URLs are correct and reachable first. If loading fails, the rebuild is cancelled and the existing index is left alone.
 
 ### Ask a question
 
-To inspect retrieved evidence without generating an answer:
+To see the retrieved evidence without generating an answer:
 
 ```bash
 python rag.py "What does GitLab say about flexible PTO?" --retrieve-only
 ```
 
-To ask the RAG assistant:
+To get an answer:
 
 ```bash
 python rag.py "What does GitLab say about flexible PTO?"
 python rag.py "What does GitLab's travel and expense policy say about approvals?"
 ```
 
-A successful answer should cite the retrieved webpage evidence using labels such as `[S1]`, with source URLs displayed below the answer. The assistant can return an insufficient-information response when the indexed pages do not support an answer. Verify important information against the original webpages.
+Answers cite their evidence with labels like `[S1]`, and the matching source URLs are printed underneath. If the indexed pages don't support an answer, the assistant says so instead of guessing. For anything important, check the original page.
 
-## Run automated tests in VS Code
+## Tests
 
-Open **Terminal → New Terminal** in VS Code and activate `.venv` before running the commands.
-
-**Syntax check:**
+Activate `.venv` first, then:
 
 ```bash
+# Syntax check
 python -m compileall -q ingest.py rag.py webpage_loader.py tests
-```
 
-**Pipeline tests:**
-
-```bash
+# Pipeline tests
 python -m unittest discover -s tests -p "test_pipeline.py" -v
-```
 
-**Webpage tests:**
-
-```bash
+# Webpage tests
 python -m unittest discover -s tests -p "test_webpages.py" -v
-```
 
-**Full offline test suite:**
-
-```bash
+# Full offline suite
 python -m unittest discover -s tests -v
 ```
 
-The provided tests cover extraction, webpage metadata, chunk IDs, indexing, persistence, citations, and protections against failed updates. Mock embeddings and LLM responses avoid paid API calls for normal unit tests.
+The tests cover extraction, webpage metadata, chunk IDs, indexing, persistence, citations, and safeguards against failed updates. Embeddings and LLM responses are mocked, so they don't cost anything to run.
 
-The live webpage extraction test in `tests/test_live_webpage.py` is **skipped by default**. To opt in on Windows PowerShell:
+The live webpage test in `tests/test_live_webpage.py` is skipped by default. To run it (PowerShell):
 
 ```powershell
 $env:RUN_LIVE_WEB_TESTS = "1"
@@ -225,38 +215,25 @@ python -m unittest discover -s tests -p "test_live_webpage.py" -v
 Remove-Item Env:RUN_LIVE_WEB_TESTS
 ```
 
-The optional `live_check.py` performs API-backed checks against the indexed GitLab policy pages and may incur charges:
+`live_check.py` runs a few real queries against the indexed GitLab pages. It calls the OpenAI API, so it may cost a little:
 
 ```bash
 python live_check.py
 ```
 
-### Windows ChromaDB cleanup note
+### Windows note: ChromaDB cleanup errors
 
-When tests use `tempfile.TemporaryDirectory()` with ChromaDB, Windows may report `PermissionError: [WinError 32]` for a database file such as `data_level0.bin`. This is a **temporary database cleanup / file-lock issue**, not a failure to extract webpage text. Releasing ChromaDB references before directory removal is the preferred approach. In tests, `TemporaryDirectory(ignore_cleanup_errors=True)` can prevent cleanup errors from failing the suite, but it may leave temporary files behind.
-
-In the latest test output shared during development, the pipeline tests passed independently, while four webpage tests encountered this cleanup issue. **Do not treat the full suite as passing until you rerun it and see `OK`** (with the expected optional skip).
+On Windows, tests that use `tempfile.TemporaryDirectory()` with ChromaDB can fail with `PermissionError: [WinError 32]` on a file like `data_level0.bin`. That's a file lock during temp-directory cleanup, not an extraction problem. The cleanest fix is to release the Chroma references before the directory is removed. As a workaround, `TemporaryDirectory(ignore_cleanup_errors=True)` stops the error from failing the suite, though it can leave temp files behind.
 
 ## Limitations
 
-- Accepts selected public **HTML webpages only**; PDF and TXT ingestion are intentionally out of scope.
-- Does not crawl websites, authenticate to private portals, or provide a graphical UI.
-- Cannot guarantee that every website can be fetched or parsed reliably.
-- Citation validation checks reference labels; it does not independently prove every generated factual claim.
-- Semantic retrieval may miss relevant context; answers should be checked against their cited sources.
-- Local ChromaDB contents are not encrypted by this application. Avoid indexing confidential information without appropriate controls.
-- Webpage owners' access restrictions, copyright, and usage terms still apply.
-
-## GitHub publishing checklist
-
-Before committing, confirm that your `.env.example` contains no real secrets, and verify your tracked files:
-
-```bash
-git status --short
-git diff --cached --name-only
-```
-
-Keep `.env`, `.venv/`, `__pycache__/`, and `data/chroma/` out of the repository. Updating `.gitignore` does **not** remove a secret from Git history if it was committed earlier.
+- HTML webpages only. PDF and TXT ingestion is deliberately out of scope.
+- No site crawling, no login-protected pages, no graphical UI.
+- Some sites can't be fetched or parsed reliably.
+- Citation checking only validates the reference labels. It doesn't prove that every claim in an answer is supported.
+- Semantic search can miss relevant passages, so check answers against the cited sources.
+- ChromaDB data is stored unencrypted. Don't index confidential content without proper controls.
+- The copyright and usage terms of the sites you index still apply.
 
 ## Author
 
@@ -264,4 +241,4 @@ Keep `.env`, `.venv/`, `__pycache__/`, and `data/chroma/` out of the repository.
 
 ## License
 
-No license was present in the original project ZIP. Add a `LICENSE` file if you want to explicitly grant others permission to reuse your code. Third-party libraries and webpage content are subject to their own terms.
+No license has been added yet. Until one is, the default is all rights reserved. Third-party libraries and webpage content are covered by their own terms.

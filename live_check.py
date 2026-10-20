@@ -94,3 +94,40 @@ def main():
     if any(not source.startswith(BASE) for source in indexed):
         raise ValueError("Index contains non-GitLab sources. For this webpage-only project, "
                          "run python ingest.py after fixing inaccessible URLs.")
+    
+    llm = ChatOpenAI(
+        model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini"),
+        temperature=0,
+        timeout=60,
+        max_retries=2,
+    )
+    failed = 0
+    for number, case in enumerate(CASES, start=1):
+        question = case["question"]
+        chunks = retrieve(question, store, k=3)
+        try:
+            result = generate_answer(question, chunks, llm)
+            problems = check_result(case, chunks, result)
+        except Exception as exc:
+            problems = [f"{type(exc).__name__}: {exc}"]
+            result = {"answer": "Evaluation failed.", "sources": {}}
+
+        print(f"\nTest {number}: {question}")
+        print(f"Answer: {result['answer']}")
+        print(format_sources(result["sources"]))
+
+        if problems:
+            failed += 1
+            print("FAIL")
+            for problem in problems:
+                print(f"  - {problem}")
+        else:
+            print("PASS")
+
+    print(f"\nPassed: {len(CASES) - failed}/{len(CASES)}")
+
+    if failed:
+        raise SystemExit(1)
+
+if __name__ == "__main__":
+    main()
