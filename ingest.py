@@ -4,17 +4,16 @@ import json
 import os
 import hashlib
 from pathlib import Path
+from xml.parsers.expat import errors
 
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from pypdf import PdfReader
 from webpage_loader import load_webpages
 
 ROOT = Path(__file__).resolve().parent
-DOCS = ROOT / "data" / "documents"
 DB = ROOT / "data" / "chroma"
 MANIFEST = DB / "index.json"
 COLLECTION = "company_documents"
@@ -34,7 +33,7 @@ def make_embeddings():
     return OpenAIEmbeddings(model=embedding_model())
 
 
-def load_documents(folder=DOCS):
+
     pages = []
     for path in sorted(Path(folder).iterdir()):
         if not path.is_file() or path.suffix.lower() not in {".txt", ".pdf"}:
@@ -113,23 +112,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rebuild", action="store_true",
                         help="Explicitly replace the ENTIRE project collection.")
-    parser.add_argument("--web", action="store_true", help="Load policy_urls.json.")
     parser.add_argument("--urls", nargs="+", help="Load these URLs instead of the config.")
-    parser.add_argument("--local", action="store_true", help="Also load local TXT/PDF files.")
     parser.add_argument("--preview", action="store_true", help="Extract only; no embedding API.")
     args = parser.parse_args()
     pages, errors = [], {}
-    use_web = args.web or bool(args.urls)
-    if use_web:
-        urls = args.urls if args.urls else json.loads(URL_CONFIG.read_text(encoding="utf-8"))
-        if not isinstance(urls, list) or not urls:
-            raise ValueError("policy_urls.json must contain a nonempty JSON list of URLs.")
-        web_pages, errors = load_webpages(urls)
-        pages.extend(web_pages)
-        for url, error in errors.items():
-            print(f"Skipped {url}: {error}. Any previously indexed copy is retained.")
-    if args.local or not use_web:
-        pages.extend(load_documents())
+    # Use command-line URLs if supplied; otherwise use policy_urls.json
+    if args.urls:
+        urls = args.urls
+    else:
+        urls = json.loads(URL_CONFIG.read_text(encoding="utf-8"))
+
+    if not isinstance(urls, list) or not urls:
+        raise ValueError("policy_urls.json must contain a nonempty JSON list of URLs.")
+
+    # Load webpages only
+    web_pages, errors = load_webpages(urls)
+    pages.extend(web_pages)
+
+    for url, error in errors.items():
+        print(f"Skipped {url}: {error}. Any previously indexed copy is retained.")
     if not pages:
         raise SystemExit("No documents loaded. Existing index was not changed.")
     if args.rebuild and errors:

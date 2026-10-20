@@ -71,7 +71,7 @@ def check_result(case, chunks, result):
 
 def main():
     if not MANIFEST.exists():
-        raise ValueError("Run python ingest.py --web first.")
+        raise ValueError("Run python ingest.py first.")
     info = json.loads(MANIFEST.read_text(encoding="utf-8"))
     if not info.get("ready", True):
         raise ValueError("Index update was interrupted. Re-run ingestion first.")
@@ -87,10 +87,10 @@ def main():
     store = open_store(make_embeddings())
     indexed = {metadata["source"] for metadata in store.get()["metadatas"]}
     if required - indexed:
-        raise ValueError("Required policies are not indexed. Run python ingest.py --web. Missing: "
+        raise ValueError("Required policies are not indexed. Run python ingest.py. Missing: "
                          + ", ".join(sorted(required - indexed)))
     for source in sorted(set(configured) - indexed):
         print(f"WARNING: Configured URL not indexed: {source}")
     if any(not source.startswith(BASE) for source in indexed):
         raise ValueError("Index contains non-GitLab sources. For this webpage-only project, "
-                         "run python ingest.py --web --rebuild after fixing inaccessible URLs.")
+                         "run python ingest.py after fixing inaccessible URLs.")

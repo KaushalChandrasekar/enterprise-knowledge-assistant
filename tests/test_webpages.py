@@ -161,12 +161,12 @@ class WebpageTests(unittest.TestCase):
         self.assertGreater(sleep.call_args.args[0], 2.5)
 
     def test_repeat_ingestion_and_changed_content_preserve_other_sources(self):
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
             embeddings = CountingEmbeddings()
-            local = split_documents([Document(page_content="Local leave policy.",
-                                              metadata={"source": "local.txt"})])
+            other_url = URL + "other/"
+            other_page = split_documents(extract_webpage(HTML, other_url))
             web = split_documents(extract_webpage(HTML, URL))
-            store = index_documents(local + web, embeddings, folder)
+            store = index_documents(other_page + web, embeddings, folder)
             count = len(store.get()["ids"])
             embedded = len(embeddings.texts)
             index_documents(web, embeddings, folder)
@@ -178,10 +178,10 @@ class WebpageTests(unittest.TestCase):
             stored = store.get(where={"source": URL})
             self.assertEqual(len(stored["ids"]), len(changed))
             self.assertNotIn("Keep an itemized receipt.", "\n".join(stored["documents"]))
-            self.assertEqual(len(store.get(where={"source": "local.txt"})["ids"]), 1)
+            self.assertEqual(len(store.get(where={"source": other_url})["ids"]), len(other_page))
 
     def test_legacy_ids_are_replaced_for_only_the_same_source(self):
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
             embeddings = CountingEmbeddings()
             current = split_documents([Document(page_content="Old policy", metadata={"source": URL})])
             store = index_documents(current, embeddings, folder)
@@ -206,13 +206,8 @@ class WebpageTests(unittest.TestCase):
         llm.invoke.return_value.content = UNKNOWN
         self.assertEqual(format_sources(generate_answer("Missing?", chunks, llm)["sources"]), "")
 
-    def test_local_citation_formats(self):
-        self.assertIn("manual.pdf, PDF page 2", format_sources({
-            "S1": {"document": "manual.pdf", "page": 2}}))
-        self.assertIn("policy.txt", format_sources({"S1": {"document": "policy.txt"}}))
-
     def test_failed_embedding_does_not_delete_previous_source(self):
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
             embeddings = CountingEmbeddings()
             original = split_documents([Document(page_content="Old approved policy.",
                                                  metadata={"source": URL})])
@@ -226,7 +221,7 @@ class WebpageTests(unittest.TestCase):
                              ["Old approved policy."])
 
     def test_failed_download_produces_no_replacement_chunks(self):
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
             embeddings = CountingEmbeddings()
             original = split_documents(extract_webpage(HTML, URL))
             store = index_documents(original, embeddings, folder)
@@ -239,9 +234,9 @@ class WebpageTests(unittest.TestCase):
 
     def test_source_ids_do_not_depend_on_other_documents(self):
         pages = extract_webpage(HTML, URL)
-        local = Document(page_content="A separate source.", metadata={"source": "local.txt"})
+        other = extract_webpage(HTML, URL + "other/")
         alone = [c.metadata["chunk_id"] for c in split_documents(pages)]
-        together = [c.metadata["chunk_id"] for c in split_documents([local] + pages)
+        together = [c.metadata["chunk_id"] for c in split_documents(other + pages)
                     if c.metadata["source"] == URL]
         self.assertEqual(alone, together)
 

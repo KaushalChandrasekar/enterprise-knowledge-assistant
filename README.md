@@ -1,104 +1,114 @@
-# Enterprise Knowledge Assistant
+# Enterprise Knowledge Assistant — Webpage-Only RAG
 
-A Python command-line **Retrieval-Augmented Generation (RAG)** project that answers natural-language questions using evidence retrieved from local documents and selected public webpages. It uses **LangChain**, **OpenAI embeddings and chat models**, and a locally persisted **Chroma** vector database, with source citations in the generated responses.
+A Python command-line **Retrieval-Augmented Generation (RAG)** application that answers questions using selected **public HTML webpages** as its knowledge base. It extracts webpage content, builds a searchable vector index with OpenAI embeddings and ChromaDB, and generates evidence-grounded answers with source citations.
 
-> **Project scope:** This is a CLI demonstration, not a hosted web app or a production enterprise security solution. GitLab's public handbook is used as an example knowledge source. This project is **not affiliated with GitLab**.
+**Scope:** Webpage ingestion only. This application does **not** ingest local PDF or TXT files, crawl an entire website, or provide a hosted web interface. The configured GitLab handbook pages are examples of public knowledge sources; this project is **not affiliated with GitLab**.
 
-## Key features
+## Features
 
-- **Document ingestion:** UTF-8 `.txt` and text-based `.pdf` files, plus explicitly configured public HTML pages.
-- **Respectful webpage loading:** Checks `robots.txt`, spaces out requests, avoids automatic redirects, and does not crawl links or bypass logins.
-- **Content processing:** Extracts article headings and text, then splits content into overlapping chunks (600 characters, 100-character overlap).
-- **Semantic search:** Stores OpenAI-generated vector embeddings in a local, persistent Chroma collection and retrieves the top three relevant chunks.
-- **Grounded answers:** Prompts the LLM to answer from retrieved evidence, with source labels and readable file/page or webpage links. It can abstain when evidence is insufficient.
-- **Incremental indexing:** Updates changed source chunks while retaining unrelated indexed documents.
-- **Testing:** Offline unit tests, optional live webpage extraction tests, and optional API-backed smoke checks.
+- **URL-driven ingestion:** Reads the list of webpages from `policy_urls.json` by default; optionally accepts URLs from the command line.
+- **HTML content extraction:** Extracts readable text, headings, and sections while filtering navigation and other site clutter.
+- **Responsible fetching:** Validates URLs, checks `robots.txt`, respects crawl delays, and rejects unsupported/non-HTML responses and automatic redirects.
+- **Text chunking:** Splits webpage content into overlapping chunks (configured as 600 characters with 100-character overlap).
+- **Semantic retrieval:** Creates OpenAI embeddings and stores them in a persistent local ChromaDB collection; the default query retrieves up to three relevant chunks.
+- **Grounded answers:** Generates answers from retrieved evidence and includes citation labels linked to the original webpages.
+- **Incremental updates:** Re-indexes changed webpage content while preserving other sources where possible; explicit rebuilds replace the collection.
+- **Automated testing:** Uses mocked embedding/HTTP/LLM behavior and a temporary ChromaDB database for offline tests, plus an optional live webpage test.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    A[Local TXT / PDF] --> C[Load and split documents]
-    B[Configured public URLs] --> C
-    C --> D[OpenAI embeddings]
-    D --> E[(Local Chroma vector store)]
-    F[User question] --> G[Semantic retrieval: top 3]
-    E --> G
-    G --> H[Evidence-grounded prompt]
+flowchart TD
+    A[Selected webpage URLs] --> B[Load and validate HTML]
+    B --> C[Extract title, sections, and text]
+    C --> D[Split into overlapping chunks]
+    D --> E[OpenAI embeddings]
+    E --> F[(Persistent ChromaDB)]
+    G[User question] --> H[Semantic similarity search]
     F --> H
-    H --> I[OpenAI chat model]
-    I --> J[Answer + citations]
+    H --> I[Relevant webpage evidence]
+    I --> J[OpenAI chat model]
+    G --> J
+    J --> K[Answer with webpage citations]
 ```
 
-## Tech stack
+## Technology stack
 
-**Python 3.12**, LangChain, OpenAI API, ChromaDB, `pypdf`, `requests`, Beautiful Soup, `python-dotenv`, and Python `unittest`. Exact library versions are listed in [`requirements.txt`](requirements.txt).
+- **Language:** Python 3.12
+- **RAG framework:** LangChain
+- **Embeddings and answer generation:** OpenAI API
+- **Vector database:** ChromaDB (`langchain-chroma`)
+- **Webpage requests and parsing:** `requests`, Beautiful Soup
+- **Configuration:** `python-dotenv`, JSON
+- **Testing:** Python `unittest`
 
-## Repository structure
+See [`requirements.txt`](requirements.txt) for the dependency versions in your project. The webpage-only requirements should **not** include `pypdf`.
+
+## Project structure
 
 ```text
 enterprise-knowledge-assistant/
-├── ingest.py                # Load, chunk and index local files / webpages
-├── webpage_loader.py        # Extract selected public HTML pages
-├── rag.py                   # Retrieve context and generate cited answers
-├── live_check.py            # Optional API-backed RAG smoke checks
-├── policy_urls.json         # Public webpage URLs to ingest
-├── requirements.txt         # Pinned Python dependencies
-├── .env.example             # Configuration template (no real secrets)
-├── .gitignore
+├── ingest.py                  # Fetch, chunk, and index webpages
+├── webpage_loader.py          # Validate URLs and extract HTML content
+├── rag.py                     # Retrieve evidence and generate cited answers
+├── live_check.py              # Optional API-backed RAG smoke checks
+├── policy_urls.json           # Configured public webpage URLs
+├── requirements.txt           # Python dependencies
+├── .env.example               # Environment-variable template (placeholders only)
+├── .gitignore                 # Ignore local secrets and generated files
 ├── README.md
 └── tests/
-    ├── test_pipeline.py
-    ├── test_webpages.py
-    └── test_live_webpage.py
+    ├── test_pipeline.py      # Chunking, index persistence, retrieval, citations
+    ├── test_webpages.py      # HTML extraction, fetching, and update safeguards
+    └── test_live_webpage.py  # Opt-in live website check
 ```
 
-`data/documents/` can be created locally for your own `.txt` or text-based `.pdf` files. `data/chroma/` is generated during indexing and should **not** be committed. The source ZIP used to prepare this README does not include example documents or a `GUIDE.md` file.
+`data/chroma/` is generated when you index content and should be excluded from Git. A local `.env` should also be excluded. **No `data/documents/` folder is required.**
 
-## Getting started
+## Setup
 
-### 1. Clone the repository
+### 1. Clone and open the project
 
 ```bash
 git clone https://github.com/KaushalChandrasekar/enterprise-knowledge-assistant.git
 cd enterprise-knowledge-assistant
 ```
 
-### 2. Create a virtual environment and install dependencies
+### 2. Create a virtual environment
 
-**Windows PowerShell (Python 3.12):**
+**Windows PowerShell:**
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-**macOS / Linux (Python 3.12):**
+**macOS / Linux:**
 
 ```bash
 python3.12 -m venv .venv
-./.venv/bin/python -m pip install --upgrade pip
-./.venv/bin/python -m pip install -r requirements.txt
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-The commands below use `python` for readability. If you haven't activated the virtual environment, use `.\.venv\Scripts\python.exe` on Windows or `./.venv/bin/python` on macOS/Linux instead.
+### 3. Configure environment variables
 
-### 3. Set up environment variables
+Create `.env` from `.env.example`:
 
-Copy the template and edit **only your local `.env`**:
+**Windows PowerShell:**
 
 ```powershell
-# Windows PowerShell
 Copy-Item .env.example .env
 ```
 
+**macOS / Linux:**
+
 ```bash
-# macOS / Linux
 cp .env.example .env
 ```
 
-The `.env.example` template should contain **placeholders**, never working credentials:
+Your `.env.example` must contain **only placeholder values**, for example:
 
 ```dotenv
 OPENAI_API_KEY=your_openai_api_key_here
@@ -107,104 +117,146 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 LANGSMITH_TRACING=false
 ```
 
-Replace the placeholder **in `.env` only**. An OpenAI API key is required for embedding/indexing and answer generation. API usage may incur charges. Extracted source text is sent to the embedding API, and retrieved excerpts are sent to the chat model; only index documents you are authorized to process this way.
+Put your real key **only in your local `.env` file**. OpenAI API usage may incur charges. Webpage text is sent to the embedding model, and retrieved evidence is sent to the chat model.
 
-> **Security warning:** An earlier project ZIP contained a real API key in both `.env` and `.env.example`. **Revoke/rotate that key before publishing.** Verify `.env.example` contains no secrets, and check `git status` / Git history before pushing. Never override GitHub secret-scanning protection to publish a live key. `.gitignore` alone does not erase secrets already committed in history.
+> **Security:** A prior project version contained a real key in `.env.example`. Revoke that key if you have not already done so, replace it locally, and remove the secret from affected Git commits before pushing. Never use GitHub's secret-scanning bypass to publish a working key.
 
-### 4. Configure your sources
+## Configure webpages
 
-For **public webpage ingestion**, review [`policy_urls.json`](policy_urls.json) and keep only the URLs you want to process. It contains a JSON array of explicitly selected GitLab handbook pages; the loader does not follow links to other articles.
+Edit [`policy_urls.json`](policy_urls.json) to select the public HTML pages you want to index. The file must contain a nonempty JSON list of URLs:
 
-For **local files**, create a `data/documents/` folder and place your `.txt` or text-based `.pdf` documents inside. Scanned/image-only PDFs require OCR before this application can extract their text.
-
-### 5. Preview webpage extraction (no API key needed)
-
-```bash
-python ingest.py --web --preview
+```json
+[
+  "https://handbook.gitlab.com/handbook/people-group/time-off-and-absence/time-off-types/",
+  "https://handbook.gitlab.com/handbook/finance/expenses/"
+]
 ```
 
-This shows extracted chunks and metadata without generating embeddings or modifying Chroma. Web access is required, and individual websites can fail or change over time.
+These are example entries; your repository may include additional GitLab handbook pages. The application processes explicitly configured URLs only—it does **not** follow every link on a page. Websites may block requests, change layouts, or have restrictive `robots.txt` rules.
 
-### 6. Build or update the index
+## Run the application
 
-**Configured webpages:**
+Run these commands from the repository root, with the virtual environment activated.
+
+### Preview extracted webpage content
 
 ```bash
-python ingest.py --web
+python ingest.py --preview
 ```
 
-**Local documents:**
+Uses `policy_urls.json` automatically and previews extracted content/chunk metadata **without calling the embeddings API** or changing ChromaDB. Internet access is still required to fetch webpages.
+
+### Ingest the configured webpages
 
 ```bash
 python ingest.py
 ```
 
-**Both sources:**
+Fetches URLs from `policy_urls.json`, generates embeddings, and updates the persistent index in `data/chroma/`.
+
+### Ingest one or more specific URLs
 
 ```bash
-python ingest.py --local --web
+python ingest.py --urls https://example.com/policy
 ```
 
-**A specific public URL:**
+The `--urls` argument **overrides** `policy_urls.json` for that run. Replace the example URL with a public HTML webpage you are permitted to access.
+
+### Rebuild the index
 
 ```bash
-python ingest.py --urls "https://handbook.gitlab.com/handbook/finance/expenses/"
+python ingest.py --rebuild
 ```
 
-A normal re-index updates successful sources without wiping unrelated ones. Use `--rebuild` **only** when you deliberately want to replace the entire collection (for example, after changing the embedding model):
+Use a rebuild when you intentionally want the collection to contain only the currently configured webpages—for example, after removing local-file ingestion support. **Rebuilding replaces the current index**; verify that your configured URLs are correct and accessible first. If loading fails, the application should cancel the rebuild rather than discard indexed content.
 
-```bash
-python ingest.py --local --web --rebuild
-```
+### Ask a question
 
-Note that `--rebuild` removes previously indexed sources not included in that run. If a requested webpage fails during a rebuild, the code cancels the rebuild. If indexing is interrupted, rerun ingestion before querying.
-
-### 7. Ask questions
-
-Inspect retrieved evidence without calling the chat model:
+To inspect retrieved evidence without generating an answer:
 
 ```bash
 python rag.py "What does GitLab say about flexible PTO?" --retrieve-only
 ```
 
-Generate a cited answer:
+To ask the RAG assistant:
 
 ```bash
 python rag.py "What does GitLab say about flexible PTO?"
-python rag.py "What does GitLab's travel and expense policy say about approval?"
+python rag.py "What does GitLab's travel and expense policy say about approvals?"
 ```
 
-The CLI displays the answer, citation references, and retrieved evidence excerpts. Answers depend on the indexed sources and may be incomplete or inaccurate; verify important policies against their original pages.
+A successful answer should cite the retrieved webpage evidence using labels such as `[S1]`, with source URLs displayed below the answer. The assistant can return an insufficient-information response when the indexed pages do not support an answer. Verify important information against the original webpages.
 
-## Testing
+## Run automated tests in VS Code
 
-Run the offline test suite:
+Open **Terminal → New Terminal** in VS Code and activate `.venv` before running the commands.
+
+**Syntax check:**
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py"
+python -m compileall -q ingest.py rag.py webpage_loader.py tests
 ```
 
-The repository also contains [`tests/test_live_webpage.py`](tests/test_live_webpage.py) for opt-in live webpage checks and [`live_check.py`](live_check.py) for API-backed RAG smoke checks. Live behavior and any required environment settings should be reviewed in those files before running them. API-backed checks may incur charges. Keyword-based smoke checks are **not** a formal measure of answer faithfulness or correctness.
+**Pipeline tests:**
 
-## Limitations and responsible use
+```bash
+python -m unittest discover -s tests -p "test_pipeline.py" -v
+```
 
-- This is a **command-line** app; there is no browser UI, deployed service, user authentication, or access-control layer.
-- Retrieval uses top-three semantic matches; long documents and complex questions may need further investigation.
-- Citation-label validation checks whether referenced labels exist, **not** whether every claim is factually supported.
-- The vector index is stored locally and is not encrypted by this application. Avoid indexing confidential information unless your deployment and data handling controls are appropriate.
-- Website availability, site structure, robots policies, and source contents may change.
-- Public handbook content can have its own reuse and attribution requirements. Check [GitLab handbook usage and licensing information](https://handbook.gitlab.com/handbook/about/handbook-usage/) before redistributing handbook text or a derived index.
+**Webpage tests:**
 
-## GitHub safety checklist
+```bash
+python -m unittest discover -s tests -p "test_webpages.py" -v
+```
 
-Before pushing, confirm that `.env` and generated files are not staged:
+**Full offline test suite:**
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The provided tests cover extraction, webpage metadata, chunk IDs, indexing, persistence, citations, and protections against failed updates. Mock embeddings and LLM responses avoid paid API calls for normal unit tests.
+
+The live webpage extraction test in `tests/test_live_webpage.py` is **skipped by default**. To opt in on Windows PowerShell:
+
+```powershell
+$env:RUN_LIVE_WEB_TESTS = "1"
+python -m unittest discover -s tests -p "test_live_webpage.py" -v
+Remove-Item Env:RUN_LIVE_WEB_TESTS
+```
+
+The optional `live_check.py` performs API-backed checks against the indexed GitLab policy pages and may incur charges:
+
+```bash
+python live_check.py
+```
+
+### Windows ChromaDB cleanup note
+
+When tests use `tempfile.TemporaryDirectory()` with ChromaDB, Windows may report `PermissionError: [WinError 32]` for a database file such as `data_level0.bin`. This is a **temporary database cleanup / file-lock issue**, not a failure to extract webpage text. Releasing ChromaDB references before directory removal is the preferred approach. In tests, `TemporaryDirectory(ignore_cleanup_errors=True)` can prevent cleanup errors from failing the suite, but it may leave temporary files behind.
+
+In the latest test output shared during development, the pipeline tests passed independently, while four webpage tests encountered this cleanup issue. **Do not treat the full suite as passing until you rerun it and see `OK`** (with the expected optional skip).
+
+## Limitations
+
+- Accepts selected public **HTML webpages only**; PDF and TXT ingestion are intentionally out of scope.
+- Does not crawl websites, authenticate to private portals, or provide a graphical UI.
+- Cannot guarantee that every website can be fetched or parsed reliably.
+- Citation validation checks reference labels; it does not independently prove every generated factual claim.
+- Semantic retrieval may miss relevant context; answers should be checked against their cited sources.
+- Local ChromaDB contents are not encrypted by this application. Avoid indexing confidential information without appropriate controls.
+- Webpage owners' access restrictions, copyright, and usage terms still apply.
+
+## GitHub publishing checklist
+
+Before committing, confirm that your `.env.example` contains no real secrets, and verify your tracked files:
 
 ```bash
 git status --short
 git diff --cached --name-only
 ```
 
-Keep `.venv/`, `.env`, `__pycache__/`, and `data/chroma/` outside version control. **Do not put real credentials in `.env.example`, code, tests, commits, screenshots, or the README.** If a secret was already committed, rotate it and clean the affected Git history before pushing.
+Keep `.env`, `.venv/`, `__pycache__/`, and `data/chroma/` out of the repository. Updating `.gitignore` does **not** remove a secret from Git history if it was committed earlier.
 
 ## Author
 
@@ -212,4 +264,4 @@ Keep `.venv/`, `.env`, `__pycache__/`, and `data/chroma/` outside version contro
 
 ## License
 
-No license has been assigned to this project's source code in the supplied archive. If you want others to reuse it, add an appropriate `LICENSE` file for code you own. Third-party content and libraries retain their own licenses.
+No license was present in the original project ZIP. Add a `LICENSE` file if you want to explicitly grant others permission to reuse your code. Third-party libraries and webpage content are subject to their own terms.
