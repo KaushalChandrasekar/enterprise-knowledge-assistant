@@ -1,0 +1,127 @@
+"""Offline contract tests; fake embeddings do not test semantic quality."""
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+
+from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
+from pypdf import PdfWriter
+from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
+
+from ingest import index_documents, load_documents, open_store, split_documents
+from rag import UNKNOWN, build_context, generate_answer, retrieve, validate_citations
+
+
+class TestEmbeddings(Embeddings):
+    def embed_documents(self, texts):
+        return [self.embed_query(text) for text in texts]
+
+    def embed_query(self, text):
+        return [1.0, 0.0] if "leave" in text.lower() else [0.0, 1.0]
+
+
+class FakeLLM:
+    def __init__(self, answer):
+        self.answer = answer
+        self.calls = 0
+
+    def invoke(self, messages):
+        self.calls += 1
+        self.messages = messages
+        return SimpleNamespace(content=self.answer)
+
+
+class PipelineTests(unittest.TestCase):
+    def test_load_and_split_preserve_metadata(self):
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder, "policy.txt").write_text("Annual leave.\n\n" * 100,
+                                                  encoding="utf-8")
+            chunks = split_documents(load_documents(folder))
+            self.assertGreater(len(chunks), 1)
+            self.assertTrue(all(len(c.page_content) <= 600 for c in chunks))
+            self.assertTrue(all(c.metadata["source"] == "policy.txt" for c in chunks))
+            self.assertNotIn("page", chunks[0].metadata)
+            ids = [c.metadata["chunk_id"] for c in chunks]
+            self.assertEqual(len(ids), len(set(ids)))
+
+    def test_empty_collection_and_scan_fail_clearly(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(ValueError, "No readable"):
+                load_documents(folder)
+
+    def test_pdf_extraction_keeps_physical_page_number(self):
+        with tempfile.TemporaryDirectory() as folder:
+            writer = PdfWriter()
+            writer.add_blank_page(width=200, height=200)
+            page = writer.add_blank_page(width=200, height=200)
+            font = DictionaryObject({
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            })
+            page[NameObject("/Resources")] = DictionaryObject({
+                NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})
+            })
+            stream = DecodedStreamObject()
+            stream.set_data(b"BT /F1 12 Tf 20 100 Td (Annual leave is 18 days.) Tj ET")
+            page[NameObject("/Contents")] = stream
+            writer.write(str(Path(folder, "policy.pdf")))
+            pages = load_documents(folder)
+            self.assertEqual(len(pages), 1)
+            self.assertEqual(pages[0].metadata["page"], 2)
+            self.assertIn("18 days", pages[0].page_content)
+            writer = PdfWriter()
+            writer.add_blank_page(width=200, height=200)
+            writer.write(str(Path(folder, "scan.pdf")))
+            with self.assertRaisesRegex(ValueError, "OCR"):
+                load_documents(folder)
+
+    def test_index_persistence_and_explicit_rebuild(self):
+        with tempfile.TemporaryDirectory() as folder:
+            chunks = split_documents([
+                Document(page_content="Annual leave is 18 days.",
+                         metadata={"source": "leave.txt", "page": 2}),
+                Document(page_content="Meal reimbursement is INR 750.",
+                         metadata={"source": "expense.txt"}),
+            ])
+            embeddings = TestEmbeddings()
+            store = index_documents(chunks, embeddings, folder)
+            self.assertEqual(retrieve("leave entitlement", store, k=1)[0].metadata["source"],
+                             "leave.txt")
+            reopened = open_store(embeddings, folder)
+            self.assertEqual(len(reopened.get()["ids"]), 2)
+            index_documents(chunks, embeddings, folder)
+            self.assertEqual(len(reopened.get()["ids"]), 2)
+            index_documents(chunks[:1], embeddings, folder, rebuild=True)
+            self.assertEqual(len(open_store(embeddings, folder).get()["ids"]), 1)
+
+    def test_prompt_and_citation_mapping(self):
+        chunks = split_documents([Document(page_content="Annual leave is 18 days.",
+                                           metadata={"source": "policy.pdf", "page": 2})])
+        llm = FakeLLM("Employees receive 18 days of annual leave. [S1]")
+        result = generate_answer("How much leave?", chunks, llm)
+        self.assertEqual(result["sources"]["S1"]["page"], 2)
+        self.assertIn("Annual leave is 18 days.", llm.messages[1].content)
+        self.assertIn("How much leave?", llm.messages[1].content)
+
+    def test_invalid_citations_and_missing_citations_are_blocked(self):
+        for answer in ["Leave is 18 days. [S99]", "Leave is 18 days."]:
+            with self.subTest(answer=answer), self.assertRaises(ValueError):
+                validate_citations(answer, {"S1": {}})
+
+    def test_unknown_and_empty_context(self):
+        llm = FakeLLM(UNKNOWN)
+        self.assertEqual(generate_answer("Revenue?", [], llm)["answer"], UNKNOWN)
+        self.assertEqual(llm.calls, 0)
+        self.assertEqual(validate_citations(UNKNOWN, {"S1": {}}), [])
+
+    def test_bad_query_and_k(self):
+        with self.assertRaises(ValueError):
+            retrieve(" ", None)
+        with self.assertRaises(ValueError):
+            retrieve("leave", None, k=0)
+
+
+if __name__ == "__main__":
+    unittest.main()
