@@ -1,261 +1,215 @@
 # Enterprise Knowledge Assistant
 
-A Python-based Retrieval-Augmented Generation application that enables users to ask natural-language questions about organizational documents and publicly available company policies, with grounded answers and source citations.
+A Python command-line **Retrieval-Augmented Generation (RAG)** project that answers natural-language questions using evidence retrieved from local documents and selected public webpages. It uses **LangChain**, **OpenAI embeddings and chat models**, and a locally persisted **Chroma** vector database, with source citations in the generated responses.
 
-## Overview
+> **Project scope:** This is a CLI demonstration, not a hosted web app or a production enterprise security solution. GitLab's public handbook is used as an example knowledge source. This project is **not affiliated with GitLab**.
 
-This project retains its original Python → LangChain → Chroma → semantic retrieval → LLM architecture. Webpages are an additional input format. It remains a small command-line application: no agents, hybrid search, reranking, cloud database, or new UI framework.
+## Key features
 
-GitLab's public handbook is an example data source. This project is not affiliated with GitLab. Public availability does not remove licensing obligations: check the current handbook content license, attribution requirements, ShareAlike terms, and applicable notices before redistributing policy text or an index containing it. GitLab's handbook usage page describes its content license:
-https://handbook.gitlab.com/handbook/about/handbook-usage/
-
-This package contains source code, fictional local documents, and synthetic test HTML. It does not bundle downloaded GitLab policies, HTML snapshots, or an indexed database. The project code has no newly assigned license; choose an appropriate license for code you own before publishing it.
-
-## Features
-
-- UTF-8 TXT and text-based PDF ingestion; physical, one-based PDF page citations.
-- Configurable, explicitly selected HTML URLs; no link crawling.
-- Requests with identification, timeout, robots.txt checks, request spacing, and no automatic redirects.
-- Main-content extraction using BeautifulSoup; cleanup of site navigation, footers, sidebars and cookie notices.
-- Titles, section headings, paragraphs and list items retained as section-level Documents.
-- Original recursive splitting: 600 characters, up to 100 characters of overlap.
-- Original embedding models and local persistent cosine Chroma index.
-- Stable source-specific chunk IDs, skipping unchanged chunks and removing obsolete ones.
-- Top-three semantic retrieval, evidence-only prompting, abstention and citation-label validation.
-- Clickable Markdown webpage sources and retained local TXT/PDF citation behavior.
-- Offline mocked tests and a separate opt-in live extraction test.
-
-## Technologies
-
-Python 3.12 (64-bit), LangChain integration packages, Chroma, pypdf, python-dotenv, requests, BeautifulSoup and unittest. Existing LangChain/Chroma/model packages are retained at their original pinned versions. Only requests and BeautifulSoup are explicitly added to requirements.txt; requests was already installed transitively.
+- **Document ingestion:** UTF-8 `.txt` and text-based `.pdf` files, plus explicitly configured public HTML pages.
+- **Respectful webpage loading:** Checks `robots.txt`, spaces out requests, avoids automatic redirects, and does not crawl links or bypass logins.
+- **Content processing:** Extracts article headings and text, then splits content into overlapping chunks (600 characters, 100-character overlap).
+- **Semantic search:** Stores OpenAI-generated vector embeddings in a local, persistent Chroma collection and retrieves the top three relevant chunks.
+- **Grounded answers:** Prompts the LLM to answer from retrieved evidence, with source labels and readable file/page or webpage links. It can abstain when evidence is insufficient.
+- **Incremental indexing:** Updates changed source chunks while retaining unrelated indexed documents.
+- **Testing:** Offline unit tests, optional live webpage extraction tests, and optional API-backed smoke checks.
 
 ## Architecture
 
 ```mermaid
-flowchart TD
-    F["TXT/PDF files"] --> D["LangChain Documents"]
-    U["Configured URLs"] --> W["Download and extract article sections"]
-    W --> D
-    D --> C["Existing splitter and embeddings"]
-    C --> V["Persistent Chroma index"]
-    Q["Question"] --> R["Existing semantic retrieval"]
-    V --> R
-    R --> P["Evidence prompt"]
-    Q --> P
-    P --> A["LLM answer and cited source links"]
+flowchart LR
+    A[Local TXT / PDF] --> C[Load and split documents]
+    B[Configured public URLs] --> C
+    C --> D[OpenAI embeddings]
+    D --> E[(Local Chroma vector store)]
+    F[User question] --> G[Semantic retrieval: top 3]
+    E --> G
+    G --> H[Evidence-grounded prompt]
+    F --> H
+    H --> I[OpenAI chat model]
+    I --> J[Answer + citations]
 ```
 
-Only the input stage and source presentation change. The same Document objects feed the same splitter, embedding wrapper, vector store, retrieval, prompt assembly and generation functions.
+## Tech stack
 
-## Project layout
+**Python 3.12**, LangChain, OpenAI API, ChromaDB, `pypdf`, `requests`, Beautiful Soup, `python-dotenv`, and Python `unittest`. Exact library versions are listed in [`requirements.txt`](requirements.txt).
+
+## Repository structure
 
 ```text
 enterprise-knowledge-assistant/
-  .env.example
-  .gitignore
-  requirements.txt
-  policy_urls.json
-  README.md
-  GUIDE.md
-  ingest.py
-  webpage_loader.py
-  rag.py
-  live_check.py
-  data/
-    documents/
-      leave_policy.txt
-      expense_policy.txt
-      it_manual.txt
-    chroma/                  # generated locally; ignored by Git
-  tests/
-    test_pipeline.py
-    test_webpages.py
-    test_live_webpage.py
+├── ingest.py                # Load, chunk and index local files / webpages
+├── webpage_loader.py        # Extract selected public HTML pages
+├── rag.py                   # Retrieve context and generate cited answers
+├── live_check.py            # Optional API-backed RAG smoke checks
+├── policy_urls.json         # Public webpage URLs to ingest
+├── requirements.txt         # Pinned Python dependencies
+├── .env.example             # Configuration template (no real secrets)
+├── .gitignore
+├── README.md
+└── tests/
+    ├── test_pipeline.py
+    ├── test_webpages.py
+    └── test_live_webpage.py
 ```
 
-## Installation on Windows with VS Code
+`data/documents/` can be created locally for your own `.txt` or text-based `.pdf` files. `data/chroma/` is generated during indexing and should **not** be committed. The source ZIP used to prepare this README does not include example documents or a `GUIDE.md` file.
 
-Install 64-bit Python 3.12 and VS Code with the Microsoft Python extension. Open the project folder and run these PowerShell commands:
+## Getting started
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/KaushalChandrasekar/enterprise-knowledge-assistant.git
+cd enterprise-knowledge-assistant
+```
+
+### 2. Create a virtual environment and install dependencies
+
+**Windows PowerShell (Python 3.12):**
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip check
 ```
 
-Choose .venv\Scripts\python.exe through VS Code's Python: Select Interpreter command. These commands do not require activating a PowerShell script.
+**macOS / Linux (Python 3.12):**
 
-To update an existing environment, retain your .env and data/chroma directory and run only the install and pip check commands. When copying the updated project over your existing one, remove the superseded lesson and test files with their old numbered-stage names; otherwise test discovery can run obsolete assertions. The supplied ZIP contains only the current names.
+```bash
+python3.12 -m venv .venv
+./.venv/bin/python -m pip install --upgrade pip
+./.venv/bin/python -m pip install -r requirements.txt
+```
 
-## Environment variables
+The commands below use `python` for readability. If you haven't activated the virtual environment, use `.\.venv\Scripts\python.exe` on Windows or `./.venv/bin/python` on macOS/Linux instead.
 
-For a new installation only:
+### 3. Set up environment variables
+
+Copy the template and edit **only your local `.env`**:
 
 ```powershell
+# Windows PowerShell
 Copy-Item .env.example .env
 ```
 
-Open .env and supply your own OPENAI_API_KEY. Keep the initial OPENAI_CHAT_MODEL=gpt-4.1-mini, OPENAI_EMBEDDING_MODEL=text-embedding-3-small and LANGSMITH_TRACING=false settings. No API key is required for HTML preview or ordinary tests. Indexing new/changed chunks and answering questions use the configured API and may incur charges. Document text is sent for embedding; retrieved context is sent for generation. Never commit .env or data/chroma. Do not overwrite an existing .env with the example file.
-
-## Configure webpage URLs
-
-Edit policy_urls.json. It is a JSON array, not Python code:
-
-```json
-[
-  "https://handbook.gitlab.com/handbook/people-group/time-off-and-absence/time-off-types/",
-  "https://handbook.gitlab.com/handbook/finance/expenses/",
-  "https://handbook.gitlab.com/handbook/people-policies/"
-]
+```bash
+# macOS / Linux
+cp .env.example .env
 ```
 
-Verified on 12 October 2026: the three configured pages returned HTTP 200, with titles Time Off Types, Global Travel and Expense Policy, and People Policies. The old /handbook/paid-time-off/ URL returned HTTP 404 in a direct Requests check; an earlier web fetch encountered an authentication redirect. It is not a usable public source in these checks. The configured Time Off Types page contains the current accessible Flexible PTO documentation.
+The `.env.example` template should contain **placeholders**, never working credentials:
 
-The loader ingests only these URLs. People Policies contains references to other policy pages; those destination pages are NOT automatically downloaded. Add a particular public destination URL explicitly if you need its full policy text.
-
-The homepage origin's robots.txt is fetched once per ingestion run. Currently GitLab's response contains User-agent: * without a disallow rule. The code checks it on each run, waits at least one second between requests, and honors longer crawl-delay/request-rate values. If robots.txt cannot be verified, the source is skipped. A missing robots.txt (404) is treated as no published robot restrictions. A redirect, sign-in page, access denial, or HTTP failure is never bypassed. Configure a current public destination rather than enabling redirect or authentication workarounds.
-
-## Preview extraction without an API key
-
-```powershell
-.\.venv\Scripts\python.exe ingest.py --web --preview
+```dotenv
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_CHAT_MODEL=gpt-4.1-mini
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+LANGSMITH_TRACING=false
 ```
 
-This downloads the configured pages, extracts content and reports source metadata and chunk counts. It does not create embeddings or modify Chroma. Inspect extraction before paying for indexing.
+Replace the placeholder **in `.env` only**. An OpenAI API key is required for embedding/indexing and answer generation. API usage may incur charges. Extracted source text is sent to the embedding API, and retrieved excerpts are sent to the chat model; only index documents you are authorized to process this way.
 
-To preview one explicit URL instead of policy_urls.json:
+> **Security warning:** An earlier project ZIP contained a real API key in both `.env` and `.env.example`. **Revoke/rotate that key before publishing.** Verify `.env.example` contains no secrets, and check `git status` / Git history before pushing. Never override GitHub secret-scanning protection to publish a live key. `.gitignore` alone does not erase secrets already committed in history.
 
-```powershell
-.\.venv\Scripts\python.exe ingest.py --urls "https://handbook.gitlab.com/handbook/finance/expenses/" --preview
+### 4. Configure your sources
+
+For **public webpage ingestion**, review [`policy_urls.json`](policy_urls.json) and keep only the URLs you want to process. It contains a JSON array of explicitly selected GitLab handbook pages; the loader does not follow links to other articles.
+
+For **local files**, create a `data/documents/` folder and place your `.txt` or text-based `.pdf` documents inside. Scanned/image-only PDFs require OCR before this application can extract their text.
+
+### 5. Preview webpage extraction (no API key needed)
+
+```bash
+python ingest.py --web --preview
 ```
 
-## Ingest documents
+This shows extracted chunks and metadata without generating embeddings or modifying Chroma. Web access is required, and individual websites can fail or change over time.
 
-Index or refresh configured webpages, keeping unrelated indexed documents:
+### 6. Build or update the index
 
-```powershell
-.\.venv\Scripts\python.exe ingest.py --web
+**Configured webpages:**
+
+```bash
+python ingest.py --web
 ```
 
-Load one or multiple explicit URLs instead of the config:
+**Local documents:**
 
-```powershell
-.\.venv\Scripts\python.exe ingest.py --urls "https://handbook.gitlab.com/handbook/finance/expenses/" "https://handbook.gitlab.com/handbook/people-policies/"
+```bash
+python ingest.py
 ```
 
-Original local-only command remains supported:
+**Both sources:**
 
-```powershell
-.\.venv\Scripts\python.exe ingest.py
+```bash
+python ingest.py --local --web
 ```
 
-Load both input types:
+**A specific public URL:**
 
-```powershell
-.\.venv\Scripts\python.exe ingest.py --local --web
+```bash
+python ingest.py --urls "https://handbook.gitlab.com/handbook/finance/expenses/"
 ```
 
-Use this ONLY when you intend to replace the entire project collection, including unrelated documents:
+A normal re-index updates successful sources without wiping unrelated ones. Use `--rebuild` **only** when you deliberately want to replace the entire collection (for example, after changing the embedding model):
 
-```powershell
-.\.venv\Scripts\python.exe ingest.py --local --web --rebuild
+```bash
+python ingest.py --local --web --rebuild
 ```
 
-A rebuild is cancelled if a requested URL fails. Normal refresh updates successful sources, retains existing copies of failed sources, reports errors and exits with a nonzero status. A retained failed source can be stale; retry successfully before relying on its policy. Removing a URL from the configuration does not remove an already indexed copy. An explicit full rebuild can remove omitted sources; no complicated version registry is introduced.
+Note that `--rebuild` removes previously indexed sources not included in that run. If a requested webpage fails during a rebuild, the code cancels the rebuild. If indexing is interrupted, rerun ingestion before querying.
 
-Stable IDs hash source, per-source chunk position, content and metadata. The same source/content/settings generate the same IDs even when unrelated documents are added. On refresh, unchanged IDs skip embedding; new IDs are added first; obsolete IDs for that source are deleted afterward. Unrelated sources are untouched. Original sequential chunk IDs are replaced automatically when their source is next ingested.
+### 7. Ask questions
 
-These writes are not a multi-source transaction. The manifest is marked not ready before indexing; an interrupted update blocks querying until ingestion succeeds again. The embedding model is retained in that manifest to prevent accidental mixed embedding spaces. Do not run indexing and querying concurrently. Changing the embedding model requires an explicit rebuild with ALL desired sources.
+Inspect retrieved evidence without calling the chat model:
 
-## Ask questions
-
-Inspect evidence first:
-
-```powershell
-.\.venv\Scripts\python.exe rag.py "What does GitLab say about coordinating flexible PTO?" --retrieve-only
+```bash
+python rag.py "What does GitLab say about flexible PTO?" --retrieve-only
 ```
 
-Generate an answer:
+Generate a cited answer:
 
-```powershell
-.\.venv\Scripts\python.exe rag.py "What does GitLab say about coordinating flexible PTO?"
-.\.venv\Scripts\python.exe rag.py "What responsibilities do GitLab managers have under the travel and expense policy?"
-.\.venv\Scripts\python.exe rag.py "Which entity-specific people policies are listed for India?"
+```bash
+python rag.py "What does GitLab say about flexible PTO?"
+python rag.py "What does GitLab's travel and expense policy say about approval?"
 ```
 
-Use focused questions. Three chunks may not cover every exception in a long handbook. The prompt distinguishes GitLab from the bundled fictional Northstar documents, but that is guidance, not a formal company access or scope filter.
+The CLI displays the answer, citation references, and retrieved evidence excerpts. Answers depend on the indexed sources and may be incomplete or inaccurate; verify important policies against their original pages.
 
-Illustrative output, not a captured LLM result:
+## Testing
 
-```text
-Coordinate planned PTO with your manager and arrange coverage. [S1]
+Run the offline test suite:
 
-Sources:
-- [S1] Time Off Types — [https://handbook.gitlab.com/handbook/people-group/time-off-and-absence/time-off-types/](https://handbook.gitlab.com/handbook/people-group/time-off-and-absence/time-off-types/)
+```bash
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
-The CLI also prints cited excerpts for inspection. Markdown links are clickable in Markdown viewers; VS Code's terminal can generally open the displayed raw URL. Only source labels present in the generated answer are included, and repeated URLs are grouped into one source entry. Webpages have no invented page numbers. Local PDF citations still display physical PDF pages.
+The repository also contains [`tests/test_live_webpage.py`](tests/test_live_webpage.py) for opt-in live webpage checks and [`live_check.py`](live_check.py) for API-backed RAG smoke checks. Live behavior and any required environment settings should be reviewed in those files before running them. API-backed checks may incur charges. Keyword-based smoke checks are **not** a formal measure of answer faithfulness or correctness.
 
-If the available evidence cannot answer a question, the instructed response is:
+## Limitations and responsible use
 
-```text
-I could not find this information in the provided documents.
+- This is a **command-line** app; there is no browser UI, deployed service, user authentication, or access-control layer.
+- Retrieval uses top-three semantic matches; long documents and complex questions may need further investigation.
+- Citation-label validation checks whether referenced labels exist, **not** whether every claim is factually supported.
+- The vector index is stored locally and is not encrypted by this application. Avoid indexing confidential information unless your deployment and data handling controls are appropriate.
+- Website availability, site structure, robots policies, and source contents may change.
+- Public handbook content can have its own reuse and attribution requirements. Check [GitLab handbook usage and licensing information](https://handbook.gitlab.com/handbook/about/handbook-usage/) before redistributing handbook text or a derived index.
+
+## GitHub safety checklist
+
+Before pushing, confirm that `.env` and generated files are not staged:
+
+```bash
+git status --short
+git diff --cached --name-only
 ```
 
-Valid citation labels do not prove factual support or complete coverage of every sentence. The model can still ignore instructions or confuse sources. Verify important statements against the cited original policy. No retrieval threshold or independent factual verifier is added.
+Keep `.venv/`, `.env`, `__pycache__/`, and `data/chroma/` outside version control. **Do not put real credentials in `.env.example`, code, tests, commits, screenshots, or the README.** If a secret was already committed, rotate it and clean the affected Git history before pushing.
 
-## Automated tests
+## Author
 
-Free, offline tests with mocked HTTP, fake models and real temporary Chroma storage:
+[Kaushal Chandrasekar](https://github.com/KaushalChandrasekar)
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
+## License
 
-The live extraction test is skipped unless enabled. Ordinary tests never call GitLab, embeddings, or an LLM API.
-
-Run the opt-in live webpage extraction test (network access, no paid model calls):
-
-```powershell
-$env:RUN_LIVE_WEB_TESTS="1"
-.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_live_webpage.py -v
-Remove-Item Env:RUN_LIVE_WEB_TESTS
-```
-
-The existing paid live_check.py still checks the fictional local sample documents. Load those samples using ingest.py before using it:
-
-```powershell
-.\.venv\Scripts\python.exe live_check.py
-```
-
-Verification performed: 28 offline tests passed, one live test was skipped in the default suite, the opt-in live extraction test passed separately, and extraction preview succeeded for all three configured GitLab URLs. pip check reported no broken requirements. No paid live embedding/generation calls were made. Windows execution must still be verified on your computer.
-
-## Troubleshooting
-
-| Problem | Action |
-|---|---|
-| Missing Python package | Install requirements using the same virtual environment interpreter |
-| Missing key or HTTP 401 from model API | Check .env and API key/project access |
-| API quota error | Check API billing and limits |
-| URL timeout, 403, redirect or robots failure | Source is skipped; check the public URL/network and retry without bypassing restrictions |
-| No article content | Inspect public HTML with --preview; dynamic-only and login pages are unsupported |
-| Index marked interrupted | Repeat the intended ingestion after fixing the failure |
-| Embedding model mismatch | Rebuild with every source you wish to retain |
-| Answer unsupported or incomplete | Inspect --retrieve-only and check whether the necessary page/section was explicitly indexed |
-| Fictional and real policies confused | Name the company in the question; consider a GitLab-only full rebuild if you intentionally want to remove sample documents |
-
-## Limitations
-
-- Static public HTML only; no JavaScript browser rendering, authenticated pages or access bypass.
-- A structural extraction fallback can still retain unrelated text on unfamiliar websites.
-- Simple text/list/table extraction does not fully reconstruct complex tables or images.
-- The local CLI URL list is trusted configuration; this is not a secure public URL-submission service.
-- Top-three semantic retrieval can omit important exceptions or country-specific context.
-- Data stays at the last successful ingestion; there is no scheduler, crawler or version history.
-- No production authentication/access controls, agents or hybrid retrieval.
-- Prompt-based abstention and citation-label checks reduce mistakes but cannot guarantee truth.
-- Source-by-source updates are not atomic across the whole collection; interrupted writes require recovery.
-- Current public policy and applicable licensing terms must be checked before relying on or redistributing content.
-
-GUIDE.md includes the complete contents of every project file plus a beginner-friendly walkthrough of each significant change.
+No license has been assigned to this project's source code in the supplied archive. If you want others to reuse it, add an appropriate `LICENSE` file for code you own. Third-party content and libraries retain their own licenses.
